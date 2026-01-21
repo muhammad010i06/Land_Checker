@@ -5,8 +5,6 @@ import os
 import re
 import folium
 from streamlit_folium import st_folium
-# 1. استدعاء مكتبة تحديد الموقع
-from streamlit_js_eval import get_geolocation
 
 # --- 1. إعدادات الصفحة ---
 st.set_page_config(page_title="Urban Cordon Checker", page_icon="🌍")
@@ -23,12 +21,9 @@ header {visibility: hidden;}
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 # --- 3. تهيئة ذاكرة الجلسة (Session State) ---
+# هذا هو الجزء الذي يحل مشكلة اختفاء الخريطة
 if 'search_result' not in st.session_state:
     st.session_state.search_result = None
-
-# تهيئة متغير لتخزين النص المكتوب في الخانة (للربط مع GPS)
-if 'input_coords' not in st.session_state:
-    st.session_state.input_coords = ""
 
 # --- 4. المتغيرات والدوال ---
 KML_FILE_NAME = 'Outer_Boundary_Only.kml'
@@ -89,25 +84,14 @@ def load_kml_boundary(file_path):
 
 # --- 5. واجهة التطبيق ---
 st.title("🌍 كشف الحيز العمراني (مشروع كاردون)")
-st.write("أدخل إحداثيات قطعة الأرض أو استخدم موقعك الحالي.")
-
-# --- إضافة زر GPS (تم التعديل هنا لحل المشكلة) ---
-# حذفت btn_text لأنه كان يسبب الخطأ
-loc = get_geolocation(component_key='get_loc')
-
-# إذا تم العثور على الموقع، نقوم بتحديث خانة الكتابة تلقائياً
-if loc:
-    current_lat = loc['coords']['latitude']
-    current_lon = loc['coords']['longitude']
-    # تحديث النص في الذاكرة
-    st.session_state.input_coords = f"{current_lat}, {current_lon}"
+st.write("أدخل إحداثيات قطعة الأرض لمعرفة هل هي داخل الحيز العمراني أم لا.")
 
 # تحميل الحدود مرة واحدة
 boundary_polygon, boundary_coords_visual = load_kml_boundary(KML_FILE_NAME)
 
 if boundary_polygon:
-    # خانة الإدخال (تم ربطها بـ session_state لتتحدث مع الـ GPS)
-    user_input = st.text_input("📍 الإحداثيات:", key='input_coords', placeholder="مثال: 30.727313, 31.284638")
+    # خانة الإدخال
+    user_input = st.text_input("📍 أدخل الإحداثيات هنا:", placeholder="مثال: 30.727313, 31.284638")
 
     # زر الفحص
     if st.button("فحص الموقع ورسم الخريطة"):
@@ -146,6 +130,7 @@ if boundary_polygon:
                 st.session_state.search_result = None
 
     # --- عرض النتيجة والخريطة (من الذاكرة) ---
+    # هذا الجزء خارج شرط الزر، لذلك سيبقى ظاهراً دائماً طالما هناك نتيجة محفوظة
     if st.session_state.search_result is not None:
         result = st.session_state.search_result
         lat = result['lat']
