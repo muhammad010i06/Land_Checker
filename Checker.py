@@ -82,32 +82,40 @@ def load_kml_boundary(file_path):
 
 # --- 5. واجهة التطبيق ---
 st.title("🌍 كشف الحيز العمراني")
-st.write("أدخل إحداثيات قطعة الأرض أو استخدم موقعك الحالي.")
 
-# --- زر GPS (النسخة الآمنة) ---
-st.write("👇 **لتحديد موقعك الحالي تلقائياً:**")
+# --- تصميم مربع تحديد الموقع (شكل جمالي) ---
+st.markdown("""
+    <div style="direction: rtl; text-align: center; border: 2px solid #FF4B4B; padding: 15px; border-radius: 10px; margin-bottom: 15px; background-color: #f9f9f9;">
+        <h4 style="margin: 0; color: #31333F;">📍 تحديد موقعك الحالي تلقائياً</h4>
+        <p style="margin: 5px 0 0 0; font-size: 14px; color: #555;">اضغط على الزر بالأسفل ليقوم الموقع بكتابة الإحداثيات لك</p>
+    </div>
+""", unsafe_allow_html=True)
+
+# --- زر GPS ---
 try:
-    # تم حذف btn_text لتجنب الأخطاء
     loc = get_geolocation(component_key='get_loc')
-    
     if loc:
         current_lat = loc['coords']['latitude']
         current_lon = loc['coords']['longitude']
         st.session_state.input_coords = f"{current_lat}, {current_lon}"
-        st.success(f"📍 تم التقاط الموقع: {current_lat:.5f}, {current_lon:.5f}")
+        st.success(f"📍 تم التقاط الموقع بنجاح: {current_lat:.5f}, {current_lon:.5f}")
 
 except Exception:
-    st.warning("⚠️ تعذر تشغيل الـ GPS تلقائياً. يرجى الإدخال اليدوي.")
+    st.warning("⚠️ يرجى استخدام الإدخال اليدوي.")
 
 # تحميل الحدود
 boundary_polygon, boundary_coords_visual = load_kml_boundary(KML_FILE_NAME)
 
 if boundary_polygon:
+    # فاصل
+    st.write("---")
+    st.write("📝 **أو أدخل الإحداثيات يدوياً:**")
+    
     # خانة الإدخال
-    user_input = st.text_input("📍 الإحداثيات:", key='input_coords', placeholder="مثال: 30.727313, 31.284638")
+    user_input = st.text_input("الإحداثيات:", key='input_coords', placeholder="مثال: 30.727313, 31.284638")
 
     # زر الفحص
-    if st.button("فحص الموقع ورسم الخريطة"):
+    if st.button("فحص الموقع ورسم الخريطة", type="primary"):
         if user_input:
             lat = None
             lon = None
