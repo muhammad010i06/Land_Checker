@@ -29,7 +29,7 @@ if 'input_coords' not in st.session_state:
     st.session_state.input_coords = ""
 
 # --- 4. المتغيرات والدوال ---
-KML_FILE_NAME = 'Outer_Boundary_Only.kml'
+KML_FILE_NAME = 'Final_Map.kml'
 
 def convert_dms_to_decimal(dms_string):
     """تحويل الصيغة من درجات ودقائق إلى عشري"""
