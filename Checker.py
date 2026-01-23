@@ -8,7 +8,7 @@ import re
 # --- 1. إعدادات الصفحة ---
 st.set_page_config(page_title="Urban Cordon Checker", page_icon="🌍")
 
-# --- 2. كود الإخفاء (CSS) ---
+# --- 2. إخفاء العلامات المائية (CSS) ---
 hide_streamlit_style = """
 <style>
 #MainMenu {visibility: hidden;}
@@ -19,14 +19,14 @@ header {visibility: hidden;}
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-# --- 3. تهيئة ذاكرة الجلسة ---
+# --- 3. تهيئة المتغيرات ---
 if 'search_result' not in st.session_state:
     st.session_state.search_result = None
 if 'input_coords' not in st.session_state:
     st.session_state.input_coords = ""
 
-# --- 4. بيانات الحيز العمراني (205 نقطة - نسخة نهائية مرتبة) ---
-# تم وضع النقاط بترتيب (Latitude, Longitude) لضمان الدقة مع Folium
+# --- 4. قاعدة البيانات (205 نقطة للحيز العمراني) ---
+# الترتيب هنا: (Latitude, Longitude) ليتوافق مع الخريطة مباشرة
 BOUNDARY_POINTS = [
     (30.722009, 31.295623), (30.721122, 31.295481), (30.721285, 31.294259), (30.722031, 31.294366), (30.725045, 31.294755),
     (30.730050, 31.302733), (30.730125, 31.302278), (30.729349, 31.302003), (30.729198, 31.302683), (30.729641, 31.302797),
@@ -69,12 +69,12 @@ BOUNDARY_POINTS = [
     (30.733325, 31.302837), (30.733228, 31.303085), (30.733124, 31.303040), (30.732857, 31.304064), (30.732406, 31.303793),
     (30.732351, 31.304903), (30.731808, 31.304799), (30.731905, 31.304481), (30.730897, 31.304118), (30.730894, 31.304281),
     (30.731161, 31.304519), (30.731154, 31.303862), (30.730056, 31.303467), (30.730106, 31.303235), (30.729515, 31.303288),
-    (30.722009, 31.295623) # غلق الشكل
+    (30.722009, 31.295623) # غلق الشكل بالعودة لأول نقطة
 ]
 
-# --- 5. الدوال ---
+# --- 5. دوال التحويل ---
 def convert_dms_to_decimal(dms_string):
-    """تحويل الصيغة من درجات ودقائق إلى عشري"""
+    """تحويل الصيغة من درجات ودقائق إلى عشري إذا أدخلها المستخدم"""
     try:
         parts = re.findall(r"(\d+)[°](\d+)['](\d+\.?\d*)[\"]([NSEW])", dms_string)
         decimals = []
@@ -95,42 +95,40 @@ def convert_dms_to_decimal(dms_string):
 # --- 6. واجهة التطبيق ---
 st.title("🌍 كشف الحيز العمراني")
 
-# --- تصميم مربع تحديد الموقع ---
+# مربع تحديد الموقع
 st.markdown("""
     <div style="direction: rtl; text-align: center; border: 2px solid #FF4B4B; padding: 15px; border-radius: 10px; margin-bottom: 15px; background-color: #f9f9f9;">
-        <h4 style="margin: 0; color: #31333F;">📍 تحديد موقعك الحالي تلقائياً</h4>
-        <p style="margin: 5px 0 0 0; font-size: 14px; color: #555;">اضغط على الزر بالأسفل</p>
+        <h4 style="margin: 0; color: #31333F;">📍 استخدم موقعك الحالي</h4>
     </div>
 """, unsafe_allow_html=True)
 
-# --- زر GPS ---
+# زر GPS
 try:
     loc = get_geolocation(component_key='get_loc')
     if loc:
         current_lat = loc['coords']['latitude']
         current_lon = loc['coords']['longitude']
         st.session_state.input_coords = f"{current_lat}, {current_lon}"
-        st.success(f"📍 تم التقاط الموقع بنجاح: {current_lat:.5f}, {current_lon:.5f}")
+        st.success(f"📍 تم التقاط الموقع: {current_lat:.5f}, {current_lon:.5f}")
 except Exception:
-    st.warning("⚠️ يرجى استخدام الإدخال اليدوي.")
+    st.warning("⚠️ يرجى تفعيل الموقع أو الإدخال اليدوي.")
 
-# --- تجهيز المضلع من القائمة مباشرة ---
-# ملاحظة: Shapely تستخدم (Lon, Lat) عكس Folium
+# تجهيز المضلع للحسابات (Shapely يحتاج Longitude أولاً)
 poly_coords = [(lon, lat) for lat, lon in BOUNDARY_POINTS]
 boundary_polygon = Polygon(poly_coords)
 
-# فاصل
 st.write("---")
 st.write("📝 **أو أدخل الإحداثيات يدوياً:**")
 
 # خانة الإدخال
-user_input = st.text_input("الإحداثيات:", key='input_coords', placeholder="مثال: 30.727313, 31.284638")
+user_input = st.text_input("الإحداثيات:", key='input_coords', placeholder="30.727313, 31.284638")
 
 # زر الفحص
 if st.button("فحص الموقع ورسم الخريطة", type="primary"):
     if user_input:
         lat = None
         lon = None
+        # محاولة قراءة الصيغة العشرية
         try:
             clean_input = user_input.replace(',', ' ').split()
             if len(clean_input) >= 2:
@@ -138,14 +136,15 @@ if st.button("فحص الموقع ورسم الخريطة", type="primary"):
                 lon = float(clean_input[1])
         except:
             pass
-
+        
+        # محاولة قراءة صيغة الدرجات والدقائق
         if lat is None:
             dms_result = convert_dms_to_decimal(user_input)
             if dms_result:
                 lat, lon = dms_result
 
         if lat is not None and lon is not None:
-            point = Point(lon, lat)
+            point = Point(lon, lat) # Shapely (Lon, Lat)
             is_inside = boundary_polygon.contains(point)
             st.session_state.search_result = {'lat': lat, 'lon': lon, 'is_inside': is_inside}
         else:
@@ -165,12 +164,12 @@ if st.session_state.search_result is not None:
     else:
         st.error("⛔ **النتيجة: الأرض خارج الحيز العمراني.**")
     
-    st.info(f"الإحداثيات: {lat}, {lon}")
+    st.info(f"الإحداثيات التي تم فحصها: {lat}, {lon}")
 
     # إعداد الخريطة
-    m = folium.Map(location=[lat, lon], zoom_start=16)
+    m = folium.Map(location=[lat, lon], zoom_start=17)
     
-    # طبقة الأقمار الصناعية
+    # طبقة الأقمار الصناعية (Google Satellite)
     folium.TileLayer(
         tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
         attr='Google',
@@ -179,9 +178,9 @@ if st.session_state.search_result is not None:
         control=True
     ).add_to(m)
 
-    # رسم الحيز (مباشرة من الكود)
+    # رسم الحيز (الأصفر)
     folium.Polygon(
-        locations=BOUNDARY_POINTS, # هنا نستخدم (Lat, Lon)
+        locations=BOUNDARY_POINTS, # Folium يأخذ (Lat, Lon) كما هي في القائمة
         color="yellow",
         weight=3,
         fill=True,
@@ -189,13 +188,13 @@ if st.session_state.search_result is not None:
         popup="حدود الحيز العمراني"
     ).add_to(m)
 
-    # الدبوس
+    # الدبوس (موقع الأرض)
     folium.Marker(
         [lat, lon],
         popup="موقع الأرض",
-        icon=folium.Icon(color="red" if not is_inside else "green", icon="info-sign")
+        icon=folium.Icon(color="green" if is_inside else "red", icon="info-sign")
     ).add_to(m)
 
     folium.LayerControl().add_to(m)
     st_folium(m, width=700, height=500)
-    
+        
