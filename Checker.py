@@ -4,13 +4,13 @@ import folium
 from streamlit_folium import st_folium
 from streamlit_js_eval import get_geolocation
 import re
-from geopy.distance import geodesic
+import math # سنستخدم الرياضيات العادية بدلاً من المكتبات الخارجية
 
 # --- 1. إعدادات الصفحة ---
 st.set_page_config(page_title="Urban Cordon Checker", page_icon="🌍")
 st.markdown("""<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;} .stApp > header {display: none;}</style>""", unsafe_allow_html=True)
 
-# --- 2. البيانات كاملة (تم تجميعها وترتيبها من 1 إلى 205) ---
+# --- 2. البيانات كاملة (النقاط الـ 205 مرتبة) ---
 raw_data_input = """
 1 31° 17' 44.243" E 30° 43' 19.233" N
 2 31° 17' 43.73" E 30° 43' 16.04" N
@@ -219,14 +219,13 @@ raw_data_input = """
 205 31° 18' 11.836" E 30° 43' 45.656" N
 """
 
-# --- 3. دوال المعالجة الذكية (Smart Split) ---
+# --- 3. دوال المعالجة الذكية (Smart Split بدون geopy) ---
 def parse_coordinates(raw_text):
     """تحويل النص إلى قائمة إحداثيات (Lat, Lon) دقيقة"""
     points = []
     lines = raw_text.strip().split('\n')
     for line in lines:
         try:
-            # البحث عن صيغة الدرجات والدقائق والثواني
             dms_match = re.findall(r"(\d+)[°](\d+)['](\d+\.?\d*)[\"]\s*([NSEW])", line)
             if len(dms_match) >= 2:
                 coords = []
@@ -235,22 +234,30 @@ def parse_coordinates(raw_text):
                     val = deg + (mn/60) + (sec/3600)
                     if direction in ['S', 'W']: val = -val
                     coords.append(val)
-                
-                # تصحيح ترتيب خطوط العرض والطول (مصر تقع عند 30 شمالاً و 31 شرقاً تقريباً)
                 if abs(coords[0] - 30) < abs(coords[1] - 30):
-                    points.append((coords[0], coords[1])) # Lat, Lon
+                    points.append((coords[0], coords[1]))
                 else:
-                    points.append((coords[1], coords[0])) # Lat, Lon
+                    points.append((coords[1], coords[0]))
                 continue
         except: continue
     return points
 
+def haversine_distance(coord1, coord2):
+    """حساب المسافة بين نقطتين بالمتر (بديل مكتبة geopy)"""
+    R = 6371000 # نصف قطر الأرض بالمتر
+    lat1, lon1 = math.radians(coord1[0]), math.radians(coord1[1])
+    lat2, lon2 = math.radians(coord2[0]), math.radians(coord2[1])
+    
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    
+    a = math.sin(dlat / 2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    
+    return R * c
+
 def smart_split_polygons(points, gap_threshold_meters=60):
-    """
-    الذكاء الاصطناعي للفصل:
-    إذا زادت المسافة بين نقطتين متتاليتين عن 60 متر، 
-    يفهم الكود أن هذا "شكل منفصل" ويقطع الخط.
-    """
+    """الذكاء الاصطناعي للفصل باستخدام دالة المسافة الجديدة"""
     if not points: return []
     
     polygons = []
@@ -260,18 +267,16 @@ def smart_split_polygons(points, gap_threshold_meters=60):
         prev_p = points[i-1]
         curr_p = points[i]
         
-        # حساب المسافة بالمتر بين النقطة الحالية والسابقة
-        dist = geodesic(prev_p, curr_p).meters
+        # استخدام الدالة الرياضية بدلاً من المكتبة الخارجية
+        dist = haversine_distance(prev_p, curr_p)
         
         if dist > gap_threshold_meters:
-            # مسافة كبيرة = شكل جديد
             if len(current_poly_points) > 2:
                 polygons.append(current_poly_points)
             current_poly_points = [curr_p]
         else:
             current_poly_points.append(curr_p)
             
-    # إضافة آخر شكل
     if len(current_poly_points) > 2:
         polygons.append(current_poly_points)
         
@@ -279,22 +284,16 @@ def smart_split_polygons(points, gap_threshold_meters=60):
 
 # --- 4. التنفيذ والحسابات ---
 all_points = parse_coordinates(raw_data_input)
-# تطبيق الفصل الذكي
 shape_groups = smart_split_polygons(all_points, gap_threshold_meters=60)
 
-# إنشاء مضلعات هندسية للفحص
 shapely_polys = []
 for grp in shape_groups:
-    # إغلاق كل شكل هندسي
     if grp[0] != grp[-1]: grp.append(grp[0])
-    # Shapely يحتاج (Lon, Lat) عكس Folium
     poly_coords = [(lon, lat) for lat, lon in grp]
     shapely_polys.append(Polygon(poly_coords))
 
 # --- 5. واجهة التطبيق ---
 st.title("🌍 كشف الحيز العمراني (النسخة النهائية)")
-
-# قسم تحديد الموقع
 st.markdown("""<div style="direction: rtl; text-align: center; border: 2px solid #FF4B4B; padding: 10px; border-radius: 10px; margin-bottom: 15px;">📍 ادخل الإحداثيات للفحص</div>""", unsafe_allow_html=True)
 
 col1, col2 = st.columns([1, 3])
@@ -307,39 +306,33 @@ with col1:
 with col2:
     user_input = st.text_input("", key='input_coords', placeholder="30.7xxxx, 31.2xxxx", label_visibility="collapsed")
 
-# الخريطة
 if all_points:
     center_lat = all_points[0][0]
     center_lon = all_points[0][1]
     m = folium.Map(location=[center_lat, center_lon], zoom_start=15)
     folium.TileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', name='Satellite').add_to(m)
 
-    # رسم الأجزاء (الحيز + الجزيرة المنفصلة)
     for grp in shape_groups:
         folium.Polygon(
             locations=grp,
-            color="#FFFF00", # أصفر
+            color="#FFFF00", 
             weight=2,
             fill=True,
             fill_opacity=0.1,
             popup="حيز عمراني"
         ).add_to(m)
 
-    # فحص النقطة المدخلة
     if user_input:
         try:
             parts = user_input.replace(',', ' ').split()
             lat, lon = float(parts[0]), float(parts[1])
             user_point = Point(lon, lat)
-            
-            # هل النقطة داخل أي جزء من الأجزاء؟
             is_inside = any(poly.contains(user_point) for poly in shapely_polys)
             
             icon = "green" if is_inside else "red"
             msg = "✅ داخل الحيز" if is_inside else "⛔ خارج الحيز"
             st.markdown(f"### {msg}")
             folium.Marker([lat, lon], icon=folium.Icon(color=icon), popup=msg).add_to(m)
-            
         except: st.warning("تأكد من الأرقام")
 
     st_folium(m, width=700, height=500)
