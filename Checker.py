@@ -1,6 +1,5 @@
 import streamlit as st
 from shapely.geometry import Point, Polygon
-from shapely.ops import unary_union
 import folium
 from streamlit_folium import st_folium
 from streamlit_js_eval import get_geolocation
@@ -34,7 +33,7 @@ if "input_coords" not in st.session_state:
 
 # ----------------------------
 # 4) قاعدة البيانات (نقاط حدود الحيز)
-# IMPORTANT:
+# NOTE:
 # - Folium يستخدم (Lat, Lon)
 # - Shapely يحتاج (Lon, Lat)
 # ----------------------------
@@ -80,15 +79,15 @@ BOUNDARY_POINTS = [
     (30.733325, 31.302837), (30.733228, 31.303085), (30.733124, 31.303040), (30.732857, 31.304064), (30.732406, 31.303793),
     (30.732351, 31.304903), (30.731808, 31.304799), (30.731905, 31.304481), (30.730897, 31.304118), (30.730894, 31.304281),
     (30.731161, 31.304519), (30.731154, 31.303862), (30.730056, 31.303467), (30.730106, 31.303235), (30.729515, 31.303288),
-    (30.722009, 31.295623)  # (قد يكون غلق بالشكل القديم، سنعيد الإغلاق لكل جزء لاحقاً)
+    (30.722009, 31.295623)
 ]
 
 # ----------------------------
-# 5) دوال التحويل DMS -> Decimal
+# 5) تحويل DMS -> Decimal
 # ----------------------------
 def convert_dms_to_decimal(dms_string: str):
     """
-    مثال صيغة:
+    مثال:
     30°43'12.1"N 31°17'04.2"E
     """
     try:
@@ -102,6 +101,7 @@ def convert_dms_to_decimal(dms_string: str):
             if direction in ["S", "W"]:
                 val = -val
             decimals.append(val)
+
         if len(decimals) == 2:
             return decimals[0], decimals[1]  # lat, lon
         return None
@@ -109,11 +109,11 @@ def convert_dms_to_decimal(dms_string: str):
         return None
 
 def parse_latlon(user_input: str):
-    """يدعم: lat, lon (Decimal) أو DMS"""
+    """يدعم decimal أو DMS"""
     if not user_input:
         return None
 
-    # Decimal
+    # decimal
     try:
         clean = user_input.replace(",", " ").split()
         if len(clean) >= 2:
@@ -123,7 +123,7 @@ def parse_latlon(user_input: str):
     except:
         pass
 
-    # DMS
+    # dms
     dms = convert_dms_to_decimal(user_input)
     if dms:
         return dms
@@ -131,25 +131,23 @@ def parse_latlon(user_input: str):
     return None
 
 # ----------------------------
-# 6) تجهيز MultiPolygon
-# (أول 4 نقاط منفصلة + باقي النقاط شكل رئيسي)
+# 6) تجهيز مضلعين (بدون unary_union)
 # ----------------------------
-SUB_POINTS = BOUNDARY_POINTS[:4]
-MAIN_POINTS = BOUNDARY_POINTS[4:]
+SUB_POINTS = BOUNDARY_POINTS[:4]   # أول 4 نقاط (جزء منفصل)
+MAIN_POINTS = BOUNDARY_POINTS[4:]  # باقي النقاط (الحيز الرئيسي)
 
 def close_ring(points):
-    if points[0] != points[-1]:
+    # إغلاق المضلع بإعادة أول نقطة في النهاية
+    if points and points[0] != points[-1]:
         return points + [points[0]]
     return points
 
 SUB_POINTS = close_ring(SUB_POINTS)
 MAIN_POINTS = close_ring(MAIN_POINTS)
 
+# Shapely (Lon, Lat)
 sub_poly = Polygon([(lon, lat) for lat, lon in SUB_POINTS])
 main_poly = Polygon([(lon, lat) for lat, lon in MAIN_POINTS])
-
-# Multi-geometry
-boundary_geom = unary_union([sub_poly, main_poly])
 
 # ----------------------------
 # 7) واجهة التطبيق
@@ -158,35 +156,31 @@ st.title("🌍 كشف الحيز العمراني")
 st.caption("تحقق من موقع الأرض داخل/خارج حدود الحيز العمراني باستخدام GPS أو إدخال يدوي.")
 
 st.write("---")
+col1, col2 = st.columns([1, 1.6], vertical_alignment="top")
 
-col1, col2 = st.columns([1, 1.5], vertical_alignment="top")
-
-# ----------------------------
-# (A) إدخال البيانات
-# ----------------------------
+# ---- (A) إدخال ----
 with col1:
     st.subheader("📍 إدخال الموقع")
 
     st.markdown("""
-        <div style="direction: rtl; text-align: center; border: 1px solid #2E2E2E; padding: 12px; border-radius: 10px; margin-bottom: 12px; background-color: #fafafa;">
+        <div style="direction: rtl; text-align: center; border: 2px solid #FF4B4B; padding: 14px; border-radius: 12px; margin-bottom: 12px; background-color: #f9f9f9;">
             <h4 style="margin: 0; color: #31333F;">استخدم موقعك الحالي (GPS)</h4>
         </div>
     """, unsafe_allow_html=True)
 
-    # زر GPS
     try:
         loc = get_geolocation(component_key="get_loc")
         if loc:
             current_lat = loc["coords"]["latitude"]
             current_lon = loc["coords"]["longitude"]
             st.session_state.input_coords = f"{current_lat}, {current_lon}"
-            st.success(f"تم التقاط الموقع: {current_lat:.5f}, {current_lon:.5f}")
+            st.success(f"📍 تم التقاط الموقع: {current_lat:.5f}, {current_lon:.5f}")
         else:
-            st.info("اسمح للموقع من المتصفح/الهاتف ثم أعد المحاولة.")
+            st.info("اسمح للموقع من المتصفح/الهاتف ثم حدّث الصفحة.")
     except Exception:
         st.warning("⚠️ يرجى تفعيل الموقع أو استخدم الإدخال اليدوي.")
 
-    st.write("📝 **أو أدخل الإحداثيات يدوياً:**")
+    st.write("📝 **أو أدخل الإحداثيات يدويًا:**")
     user_input = st.text_input(
         "الإحداثيات:",
         key="input_coords",
@@ -201,18 +195,19 @@ with col1:
         else:
             lat, lon = parsed
 
-            # تحقق من نطاق القيم
+            # نطاق القيم
             if not (-90 <= lat <= 90 and -180 <= lon <= 180):
                 st.warning("❌ نطاق الإحداثيات غير صحيح.")
                 st.session_state.search_result = None
             else:
-                point = Point(lon, lat)  # Shapely (Lon, Lat)
-                is_inside = boundary_geom.covers(point)  # covers أفضل من contains
+                point = Point(lon, lat)
+
+                # ✅ فحص بدون union: داخل أي واحد؟
+                is_inside = (sub_poly.covers(point) or main_poly.covers(point))
+
                 st.session_state.search_result = {"lat": lat, "lon": lon, "is_inside": is_inside}
 
-# ----------------------------
-# (B) النتيجة + الخريطة
-# ----------------------------
+# ---- (B) النتيجة + الخريطة ----
 with col2:
     st.subheader("🗺️ الخريطة والنتيجة")
 
@@ -224,6 +219,7 @@ with col2:
         lon = result["lon"]
         is_inside = result["is_inside"]
 
+        st.markdown("---")
         if is_inside:
             st.success("✅ **النتيجة: الأرض داخل الحيز العمراني.**")
         else:
@@ -231,10 +227,10 @@ with col2:
 
         st.info(f"الإحداثيات التي تم فحصها: {lat}, {lon}")
 
-        # إعداد الخريطة
+        # الخريطة
         m = folium.Map(location=[lat, lon], zoom_start=17, control_scale=True)
 
-        # طبقة الأقمار الصناعية (Google)
+        # Google Satellite
         folium.TileLayer(
             tiles="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
             attr="Google",
@@ -245,7 +241,7 @@ with col2:
 
         folium.TileLayer("OpenStreetMap", name="OpenStreetMap", overlay=False, control=True).add_to(m)
 
-        # رسم المضلع الرئيسي (الأصفر)
+        # رسم المضلع الرئيسي (أصفر)
         folium.Polygon(
             locations=MAIN_POINTS,
             color="yellow",
@@ -255,7 +251,7 @@ with col2:
             popup="حدود الحيز العمراني (الرئيسي)"
         ).add_to(m)
 
-        # رسم الجزء المنفصل (البرتقالي)
+        # رسم الجزء المنفصل (برتقالي)
         folium.Polygon(
             locations=SUB_POINTS,
             color="orange",
@@ -265,7 +261,7 @@ with col2:
             popup="جزء منفصل من الحيز العمراني"
         ).add_to(m)
 
-        # دبوس موقع الأرض
+        # دبوس الموقع
         folium.Marker(
             [lat, lon],
             popup="موقع الأرض",
@@ -273,5 +269,4 @@ with col2:
         ).add_to(m)
 
         folium.LayerControl(collapsed=False).add_to(m)
-
         st_folium(m, width=None, height=560)
