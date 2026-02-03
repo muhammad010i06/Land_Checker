@@ -5,28 +5,163 @@ from streamlit_folium import st_folium
 from streamlit_js_eval import get_geolocation
 import re
 
-# --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="Urban Cordon Checker", page_icon="🌍")
+# ----------------------------
+# 1) Page Config
+# ----------------------------
+st.set_page_config(
+    page_title="Urban Cordon Checker",
+    page_icon="🌍",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# --- 2. إخفاء العلامات المائية (CSS) ---
-hide_streamlit_style = """
+# ----------------------------
+# 2) Premium CSS (Professional UI)
+# ----------------------------
+APP_CSS = """
 <style>
+/* Base */
+:root{
+  --bg: #0b1220;
+  --card: rgba(255,255,255,0.06);
+  --card2: rgba(255,255,255,0.09);
+  --stroke: rgba(255,255,255,0.10);
+  --text: rgba(255,255,255,0.92);
+  --muted: rgba(255,255,255,0.65);
+  --brand: #6ee7ff;
+  --brand2:#a78bfa;
+  --good: #22c55e;
+  --bad: #ef4444;
+  --warn:#f59e0b;
+}
+
+html, body, [class*="css"]  {
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+/* Hide Streamlit chrome */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 header {visibility: hidden;}
 .stApp > header {display: none;}
+
+/* App background */
+.stApp{
+  background: radial-gradient(1200px 800px at 15% 10%, rgba(110,231,255,0.14), transparent 55%),
+              radial-gradient(1200px 800px at 85% 20%, rgba(167,139,250,0.16), transparent 50%),
+              linear-gradient(180deg, var(--bg) 0%, #070b14 100%);
+  color: var(--text);
+}
+
+/* Containers */
+.block-container{ padding-top: 1.3rem; padding-bottom: 2rem; }
+section[data-testid="stSidebar"]{
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+  border-right: 1px solid var(--stroke);
+}
+
+/* Headline */
+.hero{
+  padding: 18px 18px;
+  border: 1px solid var(--stroke);
+  background: linear-gradient(135deg, rgba(110,231,255,0.14), rgba(167,139,250,0.10));
+  border-radius: 18px;
+}
+.hero h1{
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: 0.2px;
+}
+.hero p{
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* Cards */
+.card{
+  border: 1px solid var(--stroke);
+  background: var(--card);
+  border-radius: 16px;
+  padding: 16px 16px;
+}
+.card2{
+  border: 1px solid var(--stroke);
+  background: var(--card2);
+  border-radius: 16px;
+  padding: 16px 16px;
+}
+.small{
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Inputs */
+div[data-testid="stTextInput"] > label{
+  color: rgba(255,255,255,0.72);
+  font-weight: 600;
+}
+.stTextInput input{
+  border-radius: 12px !important;
+  border: 1px solid var(--stroke) !important;
+  background: rgba(0,0,0,0.25) !important;
+  color: var(--text) !important;
+  padding: 12px 12px !important;
+}
+
+/* Buttons */
+.stButton>button{
+  border-radius: 12px !important;
+  border: 1px solid rgba(110,231,255,0.35) !important;
+  background: linear-gradient(135deg, rgba(110,231,255,0.20), rgba(167,139,250,0.18)) !important;
+  color: var(--text) !important;
+  font-weight: 700 !important;
+  padding: 10px 14px !important;
+}
+.stButton>button:hover{
+  border-color: rgba(110,231,255,0.65) !important;
+  transform: translateY(-1px);
+}
+
+/* Alerts tone tuning */
+div[data-testid="stAlert"]{
+  border-radius: 14px !important;
+  border: 1px solid var(--stroke) !important;
+  background: rgba(0,0,0,0.25) !important;
+}
+
+/* Folium frame */
+.folium-card{
+  border: 1px solid var(--stroke);
+  background: rgba(0,0,0,0.20);
+  border-radius: 18px;
+  padding: 10px;
+}
+
+/* Metrics */
+.metric{
+  display:flex; gap:10px; align-items:center;
+}
+.dot{
+  width:10px; height:10px; border-radius:50%;
+  background: var(--brand);
+  box-shadow: 0 0 18px rgba(110,231,255,0.45);
+}
 </style>
 """
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+st.markdown(APP_CSS, unsafe_allow_html=True)
 
-# --- 3. تهيئة المتغيرات ---
-if 'search_result' not in st.session_state:
+# ----------------------------
+# 3) Session State
+# ----------------------------
+if "search_result" not in st.session_state:
     st.session_state.search_result = None
-if 'input_coords' not in st.session_state:
+if "input_coords" not in st.session_state:
     st.session_state.input_coords = ""
 
-# --- 4. قاعدة البيانات (205 نقطة للحيز العمراني) ---
-# الترتيب هنا: (Latitude, Longitude) ليتوافق مع الخريطة مباشرة
+# ----------------------------
+# 4) Boundary Points
+# ----------------------------
 BOUNDARY_POINTS = [
     (30.722009, 31.295623), (30.721122, 31.295481), (30.721285, 31.294259), (30.722031, 31.294366), (30.725045, 31.294755),
     (30.730050, 31.302733), (30.730125, 31.302278), (30.729349, 31.302003), (30.729198, 31.302683), (30.729641, 31.302797),
@@ -69,22 +204,22 @@ BOUNDARY_POINTS = [
     (30.733325, 31.302837), (30.733228, 31.303085), (30.733124, 31.303040), (30.732857, 31.304064), (30.732406, 31.303793),
     (30.732351, 31.304903), (30.731808, 31.304799), (30.731905, 31.304481), (30.730897, 31.304118), (30.730894, 31.304281),
     (30.731161, 31.304519), (30.731154, 31.303862), (30.730056, 31.303467), (30.730106, 31.303235), (30.729515, 31.303288),
-    (30.722009, 31.295623) # غلق الشكل بالعودة لأول نقطة
+    (30.722009, 31.295623)
 ]
 
-# --- 5. دوال التحويل ---
-def convert_dms_to_decimal(dms_string):
-    """تحويل الصيغة من درجات ودقائق إلى عشري إذا أدخلها المستخدم"""
+# ----------------------------
+# 5) Helpers
+# ----------------------------
+def convert_dms_to_decimal(dms_string: str):
+    """Convert DMS like 30°43'12.1"N 31°17'04.2"E to decimal."""
     try:
         parts = re.findall(r"(\d+)[°](\d+)['](\d+\.?\d*)[\"]([NSEW])", dms_string)
         decimals = []
-        for part in parts:
-            deg = float(part[0])
-            min_ = float(part[1])
-            sec = float(part[2])
-            direction = part[3]
-            val = deg + (min_ / 60) + (sec / 3600)
-            if direction in ['S', 'W']: val = -val
+        for deg, minute, sec, direction in parts:
+            deg = float(deg); minute = float(minute); sec = float(sec)
+            val = deg + (minute / 60) + (sec / 3600)
+            if direction in ["S", "W"]:
+                val = -val
             decimals.append(val)
         if len(decimals) == 2:
             return decimals[0], decimals[1]
@@ -92,109 +227,171 @@ def convert_dms_to_decimal(dms_string):
     except:
         return None
 
-# --- 6. واجهة التطبيق ---
-st.title("🌍 كشف الحيز العمراني")
+def parse_latlon(user_input: str):
+    """Parse decimal or DMS. Return (lat, lon) or None."""
+    if not user_input:
+        return None
+    # decimal
+    try:
+        clean = user_input.replace(",", " ").split()
+        if len(clean) >= 2:
+            lat = float(clean[0])
+            lon = float(clean[1])
+            return lat, lon
+    except:
+        pass
+    # dms
+    dms = convert_dms_to_decimal(user_input)
+    if dms:
+        return dms
+    return None
 
-# مربع تحديد الموقع
-st.markdown("""
-    <div style="direction: rtl; text-align: center; border: 2px solid #FF4B4B; padding: 15px; border-radius: 10px; margin-bottom: 15px; background-color: #f9f9f9;">
-        <h4 style="margin: 0; color: #31333F;">📍 استخدم موقعك الحالي</h4>
-    </div>
-""", unsafe_allow_html=True)
-
-# زر GPS
-try:
-    loc = get_geolocation(component_key='get_loc')
-    if loc:
-        current_lat = loc['coords']['latitude']
-        current_lon = loc['coords']['longitude']
-        st.session_state.input_coords = f"{current_lat}, {current_lon}"
-        st.success(f"📍 تم التقاط الموقع: {current_lat:.5f}, {current_lon:.5f}")
-except Exception:
-    st.warning("⚠️ يرجى تفعيل الموقع أو الإدخال اليدوي.")
-
-# تجهيز المضلع للحسابات (Shapely يحتاج Longitude أولاً)
+# Shapely polygon expects (lon, lat)
 poly_coords = [(lon, lat) for lat, lon in BOUNDARY_POINTS]
 boundary_polygon = Polygon(poly_coords)
 
-st.write("---")
-st.write("📝 **أو أدخل الإحداثيات يدوياً:**")
+# ----------------------------
+# 6) Sidebar (controls + branding)
+# ----------------------------
+with st.sidebar:
+    st.markdown("<div class='card2'>"
+                "<div class='metric'><div class='dot'></div>"
+                "<div><div style='font-weight:800;font-size:16px;'>Urban Cordon Checker</div>"
+                "<div class='small'>Professional GIS-style checker</div></div></div>"
+                "<hr style='border:0;border-top:1px solid rgba(255,255,255,0.12);margin:12px 0;'>"
+                "<div class='small'>Tips</div>"
+                "<ul style='color:rgba(255,255,255,0.72);font-size:13px;line-height:1.5;margin-top:6px;'>"
+                "<li>استخدم GPS أو أدخل الإحداثيات يدويًا</li>"
+                "<li>الصيغة: <b>lat, lon</b> أو DMS</li>"
+                "</ul>"
+                "</div>", unsafe_allow_html=True)
 
-# خانة الإدخال
-user_input = st.text_input("الإحداثيات:", key='input_coords', placeholder="30.727313, 31.284638")
+    zoom = st.slider("Zoom", 12, 20, 17)
+    show_sat = st.toggle("Satellite layer", value=True)
+    show_boundary = st.toggle("Show boundary polygon", value=True)
 
-# زر الفحص
-if st.button("فحص الموقع ورسم الخريطة", type="primary"):
-    if user_input:
-        lat = None
-        lon = None
-        # محاولة قراءة الصيغة العشرية
-        try:
-            clean_input = user_input.replace(',', ' ').split()
-            if len(clean_input) >= 2:
-                lat = float(clean_input[0])
-                lon = float(clean_input[1])
-        except:
-            pass
-        
-        # محاولة قراءة صيغة الدرجات والدقائق
-        if lat is None:
-            dms_result = convert_dms_to_decimal(user_input)
-            if dms_result:
-                lat, lon = dms_result
+# ----------------------------
+# 7) Main Layout
+# ----------------------------
+st.markdown("""
+<div class="hero">
+  <h1>🌍 كشف الحيز العمراني</h1>
+  <p>تحقق بسرعة من موقع الأرض داخل/خارج حدود الحيز مع خريطة تفاعلية وطبقات احترافية.</p>
+</div>
+""", unsafe_allow_html=True)
 
-        if lat is not None and lon is not None:
-            point = Point(lon, lat) # Shapely (Lon, Lat)
-            is_inside = boundary_polygon.contains(point)
-            st.session_state.search_result = {'lat': lat, 'lon': lon, 'is_inside': is_inside}
+st.write("")
+
+colA, colB = st.columns([1, 1.6], vertical_alignment="top")
+
+# ---- Left Panel: Input
+with colA:
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("### 📍 إدخال الموقع")
+    st.caption("اختر طريقة الإدخال: GPS أو يدويًا. ثم اضغط **فحص الموقع**.")
+
+    # GPS card
+    st.markdown("<div class='card2'>", unsafe_allow_html=True)
+    st.markdown("**استخدم موقعك الحالي (GPS)**")
+    try:
+        loc = get_geolocation(component_key="get_loc")
+        if loc:
+            current_lat = loc["coords"]["latitude"]
+            current_lon = loc["coords"]["longitude"]
+            st.session_state.input_coords = f"{current_lat}, {current_lon}"
+            st.success(f"تم التقاط الموقع: {current_lat:.5f}, {current_lon:.5f}")
         else:
-            st.warning("❌ تأكد من صحة الأرقام.")
+            st.info("اضغط السماح بالموقع من المتصفح/الهاتف ثم أعد المحاولة.")
+    except Exception:
+        st.warning("فعّل إذن الموقع أو استخدم الإدخال اليدوي.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.write("")
+    st.markdown("**أو أدخل الإحداثيات يدويًا**")
+    user_input = st.text_input(
+        "الإحداثيات",
+        key="input_coords",
+        placeholder="30.727313, 31.284638 أو 30°43'12.1\"N 31°17'04.2\"E",
+        label_visibility="visible"
+    )
+
+    btn = st.button("فحص الموقع", type="primary", use_container_width=True)
+
+    if btn:
+        parsed = parse_latlon(user_input)
+        if not parsed:
             st.session_state.search_result = None
+            st.warning("❌ تأكد من صحة الإدخال. مثال: 30.727313, 31.284638")
+        else:
+            lat, lon = parsed
+            # validate ranges (nice UX)
+            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                st.session_state.search_result = None
+                st.warning("❌ نطاق الإحداثيات غير صحيح (Lat بين -90 و 90 / Lon بين -180 و 180).")
+            else:
+                point = Point(lon, lat)
+                is_inside = boundary_polygon.contains(point)
+                st.session_state.search_result = {"lat": lat, "lon": lon, "is_inside": is_inside}
 
-# --- عرض النتيجة والخريطة ---
-if st.session_state.search_result is not None:
-    result = st.session_state.search_result
-    lat = result['lat']
-    lon = result['lon']
-    is_inside = result['is_inside']
+    # Result card
+    if st.session_state.search_result:
+        r = st.session_state.search_result
+        lat, lon, inside = r["lat"], r["lon"], r["is_inside"]
 
-    st.markdown("---")
-    if is_inside:
-        st.success("✅ **النتيجة: الأرض داخل الحيز العمراني.**")
+        st.write("")
+        st.markdown("<div class='card2'>", unsafe_allow_html=True)
+        if inside:
+            st.success("✅ النتيجة: داخل الحيز العمراني")
+        else:
+            st.error("⛔ النتيجة: خارج الحيز العمراني")
+        st.markdown(f"<div class='small'>Lat: <b>{lat:.6f}</b> &nbsp;&nbsp; Lon: <b>{lon:.6f}</b></div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ---- Right Panel: Map
+with colB:
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("### 🗺️ الخريطة التفاعلية")
+    st.caption("يمكنك تشغيل/إيقاف الطبقات من الشريط الجانبي وإظهار حدود الحيز.")
+
+    if st.session_state.search_result:
+        r = st.session_state.search_result
+        lat, lon, inside = r["lat"], r["lon"], r["is_inside"]
+        m = folium.Map(location=[lat, lon], zoom_start=zoom, control_scale=True)
+
+        if show_sat:
+            folium.TileLayer(
+                tiles="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+                attr="Google",
+                name="Google Satellite",
+                overlay=False,
+                control=True
+            ).add_to(m)
+        folium.TileLayer("OpenStreetMap", name="OpenStreetMap", overlay=False, control=True).add_to(m)
+
+        if show_boundary:
+            folium.Polygon(
+                locations=BOUNDARY_POINTS,
+                color="yellow",
+                weight=3,
+                fill=True,
+                fill_opacity=0.18,
+                popup="حدود الحيز العمراني"
+            ).add_to(m)
+
+        folium.Marker(
+            [lat, lon],
+            popup="موقع الأرض",
+            icon=folium.Icon(color="green" if inside else "red", icon="info-sign")
+        ).add_to(m)
+
+        folium.LayerControl(collapsed=False).add_to(m)
+
+        st.markdown("<div class='folium-card'>", unsafe_allow_html=True)
+        st_folium(m, width=None, height=560)
+        st.markdown("</div>", unsafe_allow_html=True)
     else:
-        st.error("⛔ **النتيجة: الأرض خارج الحيز العمراني.**")
-    
-    st.info(f"الإحداثيات التي تم فحصها: {lat}, {lon}")
+        st.info("أدخل إحداثيات أو استخدم GPS ثم اضغط **فحص الموقع** لعرض الخريطة هنا.")
 
-    # إعداد الخريطة
-    m = folium.Map(location=[lat, lon], zoom_start=17)
-    
-    # طبقة الأقمار الصناعية (Google Satellite)
-    folium.TileLayer(
-        tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
-        attr='Google',
-        name='Google Satellite',
-        overlay=False,
-        control=True
-    ).add_to(m)
-
-    # رسم الحيز (الأصفر)
-    folium.Polygon(
-        locations=BOUNDARY_POINTS, # Folium يأخذ (Lat, Lon) كما هي في القائمة
-        color="yellow",
-        weight=3,
-        fill=True,
-        fill_opacity=0.2,
-        popup="حدود الحيز العمراني"
-    ).add_to(m)
-
-    # الدبوس (موقع الأرض)
-    folium.Marker(
-        [lat, lon],
-        popup="موقع الأرض",
-        icon=folium.Icon(color="green" if is_inside else "red", icon="info-sign")
-    ).add_to(m)
-
-    folium.LayerControl().add_to(m)
-    st_folium(m, width=700, height=500)
-    
+    st.markdown("</div>", unsafe_allow_html=True)
